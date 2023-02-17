@@ -6,29 +6,74 @@ namespace TaskProject
     {
         static void Main(string[] args)
         {
-            for (int i = 0; i < 5; i++)
-            {
-                Thread myThread = new(new ThreadStart(Print));
-                myThread.Name = $"Thread {i + 1}";
-                myThread.Start();
-            }
-        }
-        static void Print()
-        {
+            CancellationTokenSource cts = new CancellationTokenSource();
+            CancellationToken token = cts.Token;
+            List<Task> tasks = new List<Task>();
             try
             {
-                int count = 0;
-
-                while (Console.KeyAvailable == false)
+                for (int i = 0; i < 5; i++)
                 {
-                    count++;
-                    Console.WriteLine($"{Thread.CurrentThread.Name}: {count}");
-                    Thread.Sleep(1000);
+                    int num = i;
+
+                    tasks.Add(new Task(() =>
+                    {
+                        int count = 0;
+                        {
+                            while (true)
+                            {
+                                if (token.IsCancellationRequested)
+                                {
+                                    token.ThrowIfCancellationRequested();
+                                }
+                                else
+                                {
+                                    count++;
+                                    Console.WriteLine($"{num + 1}: {count}");
+                                    Thread.Sleep(1000);
+                                }
+                            }
+                        }
+                    }, token));
+                    tasks.Last().Start();
+                }
+
+                while (true)
+                {
+                    if (Console.KeyAvailable == true)
+                    {
+                        cts.Cancel();
+                        foreach (Task task in tasks)
+                        {
+                            task.Wait();
+                        }
+
+                        break;
+                    }
                 }
             }
-            catch (ThreadAbortException ex)
+            catch (AggregateException ae)
             {
-                Console.WriteLine(ex.ExceptionState);
+                foreach (Exception e in ae.InnerExceptions)
+                {
+                    if (e is TaskCanceledException)
+                    {
+                        Console.WriteLine("Operation aborted");
+                    }
+                    else
+                    {
+                        Console.WriteLine(e.Message);
+                    }
+                }
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+
+            foreach (Task task in tasks)
+            {
+
+                Console.WriteLine($"Task {tasks.IndexOf(task)} status: {task.Status}");
             }
         }
     }
